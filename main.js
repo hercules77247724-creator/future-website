@@ -100,10 +100,12 @@ async function initScene() {
   if (!pgl) throw new Error('no webgl');
   pgl.getExtension('WEBGL_lose_context')?.loseContext();
   const THREE = await import('three'); // CDN (pinned r160) via importmap; rejects if blocked
+  let RoomEnv = null; try { RoomEnv = (await import('three/addons/environments/RoomEnvironment.js')).RoomEnvironment; } catch (e) { console.info('env map unavailable:', e && e.message); }
   const weak = innerWidth < 760 || (navigator.hardwareConcurrency || 8) <= 4 || matchMedia('(pointer:coarse)').matches;
   const BASE_DPR = Math.min(devicePixelRatio || 1, 1.5);
   const renderer = new THREE.WebGLRenderer({ antialias: !weak && BASE_DPR < 2, alpha: false, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15; // PBR meshes only: every other material sets toneMapped=false so glow/lines keep their exact colours
   const cv = renderer.domElement; cv.id = 'scene'; cv.setAttribute('aria-hidden', 'true');
   document.body.insertBefore(cv, document.querySelector('.vignette'));
 
@@ -123,13 +125,60 @@ async function initScene() {
   const sprite = (color, opacity) => new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   const addMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
 
-  // lights
-  sc.add(new THREE.AmbientLight(0xffffff, .12));
-  const coreLight = new THREE.PointLight(C('glow'), 6, 18, 1.6); G.add(coreLight);
+  // ---- procedural surface detail (no image downloads; own seeded PRNG so Math.random sequences are untouched) ----
+  const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const hexRGB = c => [c.r, c.g, c.b].map(v => Math.round(Math.pow(v, 1 / 2.2) * 255));
+  // mode: 'color' (blotchy dark gold plates, bright gold panel lines), 'bump' (grey: grooves + grain), 'rough' (grey roughness), 'emis' (bright plates, dark seams)
+  function surfaceTex(mode, w, h, seed, panels) {
+    const r = mulberry(seed), cvs = document.createElement('canvas'); cvs.width = w; cvs.height = h;
+    const x = cvs.getContext('2d'), base = { color: '#6b5420', bump: '#b0b0b0', rough: '#8c8c8c', emis: '#e0e0e0' }[mode];
+    x.fillStyle = base; x.fillRect(0, 0, w, h);
+    // soft blotches: random low-res noise scaled up with smoothing, two octaves
+    for (const [n, a] of [[8, .5], [24, .3]]) {
+      const sm = document.createElement('canvas'); sm.width = n * 2; sm.height = n; const sx = sm.getContext('2d'), id = sx.createImageData(n * 2, n);
+      for (let k = 0; k < id.data.length; k += 4) { const v = r() * 255; id.data[k] = id.data[k + 1] = id.data[k + 2] = v; id.data[k + 3] = 255; }
+      sx.putImageData(id, 0, 0); x.globalAlpha = a * (mode === 'color' ? .55 : mode === 'emis' ? .35 : .8); x.globalCompositeOperation = mode === 'color' ? 'overlay' : 'soft-light';
+      x.imageSmoothingQuality = 'high'; x.drawImage(sm, 0, 0, w, h);
+    }
+    x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+    // fine grain
+    const gid = x.getImageData(0, 0, w, h), gd = gid.data, ga = mode === 'color' ? 10 : 18;
+    for (let k = 0; k < gd.length; k += 4) { const v = (r() - .5) * ga; gd[k] += v; gd[k + 1] += v; gd[k + 2] += v; }
+    x.putImageData(gid, 0, 0);
+    // panel seams: latitude bands + meridian splits, rivets
+    const line = { color: ['#E8C766', 2], bump: ['#101010', 2.2], rough: ['#303030', 2], emis: ['#161616', 2] }[mode];
+    x.strokeStyle = line[0]; x.lineWidth = line[1] * w / 256; x.lineCap = 'round';
+    const bands = panels[0], cols = panels[1];
+    for (let b = 1; b < bands; b++) { const y = b / bands * h; x.beginPath(); x.moveTo(0, y); x.lineTo(w, y); x.stroke(); }
+    for (let b = 0; b < bands; b++) { const off = (b % 2) * .5; for (let c = 0; c < cols; c++) { const xx = (c + off) / cols * w; x.beginPath(); x.moveTo(xx, b / bands * h); x.lineTo(xx, (b + 1) / bands * h); x.stroke(); } }
+    x.fillStyle = mode === 'color' ? '#F0D488' : mode === 'bump' ? '#f2f2f2' : mode === 'rough' ? '#404040' : '#bdbdbd';
+    for (let b = 0; b < bands; b++) for (let c = 0; c < cols; c++) { const xx = ((c + (b % 2) * .5) / cols + .5 / cols * .18) * w, yy = (b / bands + .035) * h; x.beginPath(); x.arc(xx, yy, w / 256 * 1.3, 0, 6.283); x.fill(); }
+    const t = new THREE.CanvasTexture(cvs); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 4;
+    if (mode === 'color' || mode === 'emis') t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  const coreTex = { map: surfaceTex('color', 512, 256, 11, [6, 12]), bump: surfaceTex('bump', 512, 256, 11, [6, 12]), rough: surfaceTex('rough', 512, 256, 11, [6, 12]), emis: surfaceTex('emis', 512, 256, 11, [6, 12]) };
+  const nodeTex = { map: surfaceTex('color', 256, 128, 23, [4, 8]), bump: surfaceTex('bump', 256, 128, 23, [4, 8]), rough: surfaceTex('rough', 256, 128, 23, [4, 8]), emis: surfaceTex('emis', 256, 128, 23, [4, 8]) };
+  const physical = (T, o) => new (o.clearcoat ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial)(Object.assign({ map: T.map, bumpMap: T.bump, bumpScale: 1.6, roughnessMap: T.rough, emissiveMap: T.emis }, o));
+  const glass = (color, op) => new THREE.MeshPhongMaterial({ color, specular: 0xfff0d0, shininess: 140, transparent: true, opacity: op, depthWrite: false }); // cheap glossy shell (Phong ignores the env map: big transparent overdraw stays cheap)
+  const goldBand = color => new THREE.MeshStandardMaterial({ color, metalness: 1, roughness: .28, envMapIntensity: 1 });
 
-  // core: emissive sphere, wire shell, gimbal rings, two halo sprites
+  // environment map: procedural room (PMREM), reflections only; falls back to none if the addon is blocked
+  let envTex = null; if (RoomEnv) { const pm = new THREE.PMREMGenerator(renderer); envTex = pm.fromScene(new RoomEnv(), .04).texture; pm.dispose(); sc.environment = envTex; }
+
+  // lights: dim cool/warm hemisphere + ambient, directional key and cool rim, warm point light from the core
+  sc.add(new THREE.AmbientLight(0xffffff, .12));
+  sc.add(new THREE.HemisphereLight(0xaab8d8, 0x3a2a10, .45));
+  const key = new THREE.DirectionalLight(0xfff0d6, 1.7); key.position.set(-5, 6, 8); sc.add(key);
+  const rim = new THREE.DirectionalLight(0x8fa6d8, .6); rim.position.set(6, -2, -6); sc.add(rim);
+  const coreLight = new THREE.PointLight(C('glow'), 6, 18, 1.6); G.add(coreLight);
+  // (no shadow maps: nodes are small, floating and additive-lit; shadows would cost fill-rate on weak GPUs for no visible gain)
+
+  // core: PBR sphere (inner emissive + glass clearcoat shell + metal band), wire shell, gimbal rings, two halo sprites
   const core = new THREE.Group(); G.add(core);
-  const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(.34, 32, 20), new THREE.MeshBasicMaterial({ color: C('core') })); core.add(coreMesh);
+  const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(.34, 48, 32), physical(coreTex, { color: 0xffffff, emissive: C('core'), emissiveIntensity: 1.8, metalness: .4, roughness: 1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .3 })); core.add(coreMesh);
+  const coreGlass = new THREE.Mesh(new THREE.SphereGeometry(.415, 40, 24), glass(C('core'), .16)); coreMesh.add(coreGlass);
+  const coreBand = new THREE.Mesh(new THREE.TorusGeometry(.47, .011, 10, 96), goldBand(C('line'))); coreBand.rotation.x = Math.PI / 2; coreMesh.add(coreBand);
   const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(.62, 1), new THREE.MeshBasicMaterial({ color: C('line'), wireframe: true, transparent: true, opacity: .28, blending: THREE.AdditiveBlending, depthWrite: false })); core.add(shell);
   const rings = [[.95, 0, 0], [1.3, 1.1, .4], [1.7, -.8, 1.2]].map(([r, rx, rz], k) => {
     const m = new THREE.Mesh(new THREE.TorusGeometry(r, .006, 6, 128), addMat(C('line'), .5 - k * .1)); m.rotation.set(Math.PI / 2 + rx, 0, rz); core.add(m); return m;
@@ -139,8 +188,9 @@ async function initScene() {
   // agents
   const agents = AGENTS.map(([, , , , [r, inc, tilt, w, ph]], i) => {
     const g = new THREE.Group(); G.add(g);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x1a1308, emissive: C('node'), emissiveIntensity: .8, roughness: .35, metalness: .7 });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(.14, 24, 16), mat); g.add(mesh);
+    const mat = physical(nodeTex, { color: 0xffffff, emissive: C('node'), emissiveIntensity: .8, metalness: .7, roughness: 1, envMapIntensity: .8 });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(.14, 32, 20), mat); mesh.rotation.set(.3 + i * .5, i * .9, 0); g.add(mesh);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.158, .009, 8, 48), goldBand(C('line'))); band.rotation.x = Math.PI / 2; mesh.add(band); 
     const halo = sprite(C('glow'), .55); halo.userData.b = 1; g.add(halo);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(.25, .004, 6, 48), addMat(C('line'), .5)); ring.rotation.set(Math.random() * 3, Math.random() * 3, 0); g.add(ring);
     // orbit path (hero)
@@ -152,7 +202,7 @@ async function initScene() {
     geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
     const lmat = new THREE.LineBasicMaterial({ color: C('line'), transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false });
     const line = new THREE.Line(geo, lmat); line.frustumCulled = false; G.add(line);
-    return { g, mesh, mat, halo, ring, orbit, line, arr, lmat, N, r, inc, tilt, w, ph, glow: 0, tgt: 0, pos: new THREE.Vector3(), ctl: new THREE.Vector3(), scale: 1 };
+    return { g, mesh, mat, band, halo, ring, orbit, line, arr, lmat, N, r, inc, tilt, w, ph, glow: 0, tgt: 0, pos: new THREE.Vector3(), ctl: new THREE.Vector3(), scale: 1 };
   });
   // team ring (faint ellipse shown in team layout)
   const ep = []; for (let k = 0; k < 128; k++) { const a = k / 128 * Math.PI * 2; ep.push(new THREE.Vector3(Math.cos(a), Math.sin(a), 0)); }
@@ -177,6 +227,55 @@ async function initScene() {
   mkPoints(Math.round(NP * .5), .1, .9, 0, 7, 9, C('particle'));
   mkPoints(weak ? 8 : 18, 1.6, .09, 4, 8.5, 7, C('glow')); // bokeh
 
+  // ---- realistic backdrop: baked nebula (equirect fbm on a back-faced sphere, zero per-frame cost) + layered starfield ----
+  const bg = new THREE.Group(); sc.add(bg);
+  const nebula = (() => { // flat baked fbm image on a CSS layer between aurora and scene: no WebGL fill cost, screen-blended
+    const w = weak ? 320 : 480, h = Math.round(w * 9 / 16), cvs = document.createElement('canvas'); cvs.width = w; cvs.height = h;
+    const x = cvs.getContext('2d'), img = x.createImageData(w, h), rr = mulberry(77), perm = new Float32Array(4096); for (let k = 0; k < 4096; k++) perm[k] = rr();
+    const hs = (i, j, k) => perm[((i * 73856093) ^ (j * 19349663) ^ (k * 83492791)) & 4095];
+    const fade = t => t * t * (3 - 2 * t), lerp = (a, b, t) => a + (b - a) * t;
+    const vn = (px, py, pz) => { const i = Math.floor(px), j = Math.floor(py), k = Math.floor(pz), u = fade(px - i), v = fade(py - j), t = fade(pz - k);
+      return lerp(lerp(lerp(hs(i, j, k), hs(i + 1, j, k), u), lerp(hs(i, j + 1, k), hs(i + 1, j + 1, k), u), v), lerp(lerp(hs(i, j, k + 1), hs(i + 1, j, k + 1), u), lerp(hs(i, j + 1, k + 1), hs(i + 1, j + 1, k + 1), u), v), t); };
+    const fbm = (a, b, c) => { let f = 0, amp = .5, q = 1.6; for (let o = 0; o < 4; o++) { f += amp * vn(a * q, b * q, c * q); q *= 2.05; amp *= .5; } return f; };
+    const warm = hexRGB(C('dim')), warm2 = hexRGB(C('glow')), cool = [38, 56, 104];
+    for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+      const u = px / w, v = py / h;
+      const n = fbm(u * 2.8 + 3, v * 2.8 + 3, 1.7), m = fbm(u * 2.1 + 9, v * 2.1 + 9, 4.1);
+      const d = Math.max(0, n - .44) * 2.3, d2 = Math.max(0, m - .5) * 2.4, lane = Math.exp(-Math.pow((v - .5 - .2 * Math.sin(u * 4.2 + 1)) * 3.2, 2));
+      const a = Math.min(1, d * (.45 + 1.0 * lane)), b = Math.min(1, d2 * .7);
+      const k = (py * w + px) * 4, I = .3;
+      id_set(img.data, k, (warm[0] * a * .8 + warm2[0] * a * a * .5 + cool[0] * b) * I, (warm[1] * a * .8 + warm2[1] * a * a * .5 + cool[1] * b) * I, (warm[2] * a * .8 + warm2[2] * a * a * .5 + cool[2] * b) * I);
+    }
+    function id_set(d, k, r, g, b) { d[k] = r; d[k + 1] = g; d[k + 2] = b; d[k + 3] = 255; }
+    x.putImageData(img, 0, 0);
+    const el = document.createElement('div'); el.id = 'nebula'; el.setAttribute('aria-hidden', 'true');
+    el.style.backgroundImage = 'url(' + cvs.toDataURL('image/jpeg', .85) + ')';
+    document.body.insertBefore(el, cv); return el;
+  })();
+  const STAR_N = 1600, starU = { uPx: { value: 1 } };
+  const stars = (() => {
+    const r = mulberry(5), pos = new Float32Array(STAR_N * 3), col = new Float32Array(STAR_N * 3), siz = new Float32Array(STAR_N);
+    const tints = [[1, .96, .88], [.82, .9, 1], [1, .84, .6], [.95, .95, 1]];
+    for (let k = 0; k < STAR_N; k++) {
+      const u = r() * 2 - 1, a = r() * 6.2832, q = Math.sqrt(1 - u * u), R = 70 + r() * 20;
+      pos.set([q * Math.cos(a) * R, u * R, q * Math.sin(a) * R], k * 3);
+      const m = Math.pow(r(), 5), t = tints[Math.floor(r() * tints.length)], br = .08 + .17 * m; // power-law magnitude; peak pixel <= .25 so a star behind text keeps contrast
+      col.set([t[0] * br, t[1] * br, t[2] * br], k * 3); siz[k] = 1 + 2.4 * m + r() * .4;
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aColor', new THREE.BufferAttribute(col, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(siz, 1));
+    const m = new THREE.ShaderMaterial({ uniforms: starU, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false,
+      vertexShader: 'attribute vec3 aColor; attribute float aSize; uniform float uPx; varying vec3 vC; void main(){ vC = aColor; vec4 mv = modelViewMatrix * vec4(position,1.); gl_PointSize = aSize * uPx; gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying vec3 vC; void main(){ vec2 d = gl_PointCoord - .5; float f = smoothstep(.5, 0., length(d)); gl_FragColor = vec4(vC * f * f, 1.); }' });
+    const p = new THREE.Points(g, m); p.renderOrder = -10; p.frustumCulled = false; bg.add(p); return p;
+  })();
+  // quality tier: 2 = full, 1 = fewer stars, keeps nebula/env/core glass (weak devices / first fallback step), 0 = minimal (second step): no nebula, no env map, no glass shell, few stars
+  const baseTier = weak ? 1 : 2; let tier = baseTier;
+  function applyTier(t) {
+    tier = t; stars.geometry.setDrawRange(0, [350, 800, STAR_N][t]); nebula.style.display = t > 0 ? '' : 'none';
+    coreGlass.visible = t > 0; coreBand.visible = t > 0; agents.forEach(a => { a.band.visible = t > 0; }); sc.environment = t > 0 ? envTex : null; cv.dataset.tier = t;
+  }
+  sc.traverse(o => { const mm = o.material; if (mm && !mm.isMeshStandardMaterial) mm.toneMapped = false; });
+
   // ---- state ----
   const V = new THREE.Vector3(), V2 = new THREE.Vector3();
   const sm = x => x * x * (3 - 2 * x), clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -200,6 +299,7 @@ async function initScene() {
     W = innerWidth; H = innerHeight;
     renderer.setPixelRatio(BASE_DPR * scale);
     renderer.setSize(W, H, false);
+    starU.uPx.value = renderer.getPixelRatio();
     cam.aspect = W / H; cam.updateProjectionMatrix();
     cv.dataset.scale = scale;
     if (reduce) invalidate();
@@ -288,6 +388,7 @@ async function initScene() {
       if (!reduce) { l.rotation.y = clock * (.004 + i * .004); l.rotation.z = Math.sin(clock * .03 + i) * .03; }
       l.position.x = -mxs * (.3 + i * .35); l.position.y = mys * (.2 + i * .25) + ps * (1.2 + i * .8);
     });
+    if (!reduce) bg.rotation.y = clock * .004;
     cam.updateMatrixWorld(); G.updateMatrixWorld(true);
     // labels: project node positions into the HTML overlay
     const hdist = 11;
@@ -319,37 +420,56 @@ async function initScene() {
     if (slowSince && now - slowSince >= SLOW_HOLD && si < SCALES.length - 1) { downs++; setStep(si + 1, now); }
     else if (fastSince && now - fastSince >= FAST_HOLD && si > 0) { ups++; setStep(si - 1, now); }
   }
-  function setStep(n, now) { si = n; scale = SCALES[si]; resize(); lastChange = now; resetMon(now); }
+  function setStep(n, now) { si = n; scale = SCALES[si]; applyTier(Math.min(baseTier, 2 - si)); resize(); lastChange = now; resetMon(now); }
   function frame(ts) {
     raf = requestAnimationFrame(frame);
     let dt = 1 / 60;
     if (last) { const iv = ts - last; dt = Math.min(iv / 1000, .1); monitor(ts, iv); }
     last = ts;
     const s = performance.now(); update(dt); renderer.render(sc, cam); cost += performance.now() - s; frames++;
-    window.__sceneStats = { frames, avgCpuMs: cost / frames, T: clock, p: ps, scale, step: si, downs, ups, medianMs: ivals.length ? median(ivals) : 0, running: !!raf };
+    window.__sceneStats = { tier, frames, avgCpuMs: cost / frames, T: clock, p: ps, scale, step: si, downs, ups, medianMs: ivals.length ? median(ivals) : 0, running: !!raf };
   }
   let pending = false;
   function invalidate() { // reduced motion: render on demand, one frame
     if (!reduce || pending) return; pending = true;
     requestAnimationFrame(() => { pending = false; update(1 / 60); renderer.render(sc, cam); window.__sceneStats = { frames: ++frames, reduced: true, p: ps, scale }; });
   }
-  function fail() { cancelAnimationFrame(raf); raf = 0; cv.remove(); root.classList.remove('has3d'); root.classList.add('no3d'); scene = null; labelEls.forEach(el => { el.style.transform = ''; el.style.opacity = ''; }); }
+  function fail() { cancelAnimationFrame(raf); raf = 0; cv.remove(); nebula.remove(); root.classList.remove('has3d'); root.classList.add('no3d'); scene = null; labelEls.forEach(el => { el.style.transform = ''; el.style.opacity = ''; }); }
   cv.addEventListener('webglcontextlost', e => { e.preventDefault(); fail(); });
   addEventListener('resize', () => { resize(); resetMon(performance.now()); });
   document.addEventListener('visibilitychange', () => {
     cancelAnimationFrame(raf); raf = 0;
-    if (!document.hidden && !reduce) { last = 0; resetMon(performance.now()); raf = requestAnimationFrame(frame); } // clock keeps its value
+    if (!document.hidden && !reduce && !DET) { last = 0; resetMon(performance.now()); raf = requestAnimationFrame(frame); } // clock keeps its value
   });
 
+  // deterministic test hook (only with ?det in the URL): manual stepping, no rAF loop
+  const DET = new URLSearchParams(location.search).has('det');
+  if (DET) window.__det = {
+    stopIdle: () => { clearTimeout(idleT); idleT = 0; },
+    onScroll, setMouse: (x, y) => { mx = x; my = y; mxs = x; mys = y; },
+    step: (dt, n = 1) => { for (let q = 0; q < n; q++) update(dt); renderer.render(sc, cam); },
+    pulse: (i, o, d) => spawn(i, o, d), setActive: (i, on) => { agents[i].tgt = on ? 1 : 0; }, setCore: v => { coreT = v; },
+    sample: () => {
+      const f = v => [v.x, v.y, v.z].map(n => +n.toFixed(6));
+      return { cam: f(cam.position), camq: [cam.quaternion.x, cam.quaternion.y, cam.quaternion.z, cam.quaternion.w].map(n => +n.toFixed(6)),
+        G: f(G.position).concat(f(G.rotation.toVector3 ? new THREE.Vector3(G.rotation.x, G.rotation.y, G.rotation.z) : G.position)),
+        cs: +core.scale.x.toFixed(6), coreMesh: +coreMesh.scale.x.toFixed(6), coreLight: +coreLight.intensity.toFixed(6),
+        haloA: [haloA.scale.x, haloA.material.opacity].map(n => +n.toFixed(6)), haloB: [haloB.scale.x, haloB.material.opacity].map(n => +n.toFixed(6)),
+        agents: agents.map(a => { V.setFromMatrixPosition(a.g.matrixWorld); return { w: f(V), s: +a.mesh.scale.x.toFixed(6), h: +a.halo.material.opacity.toFixed(6), l: +a.lmat.opacity.toFixed(6), line: [...a.arr].slice(0, 9).map(n => +n.toFixed(5)) }; }),
+        pulses: pool.filter(p => p.live).map(p => f(p.s.position).concat([+p.s.material.opacity.toFixed(5), +p.s.scale.x.toFixed(5)])),
+        layers: layers.map(l => f(l.position).concat([+l.rotation.y.toFixed(6), +l.rotation.z.toFixed(6)])),
+        labels: labelEls.map(e => e.style.transform + '|' + e.style.opacity), lp: root.style.getPropertyValue('--lp'), p: root.style.getPropertyValue('--p'), T: +clock.toFixed(6) };
+    }
+  };
   scene = {
     pulse: (i, o, dur) => spawn(i, o, dur),
     setActive: (i, on) => { agents[i].tgt = on ? 1 : 0; invalidate(); },
     setCore: v => { coreT = v; invalidate(); }, invalidate
   };
   root.classList.remove('no3d'); root.classList.add('has3d');
-  resize(); onScroll();
+  applyTier(baseTier); resize(); onScroll();
   if (reduce) { ps = pT; update(1 / 60); renderer.render(sc, cam); window.__sceneStats = { frames: 1, reduced: true }; }
-  else { resetMon(performance.now()); raf = requestAnimationFrame(frame); }
+  else { resetMon(performance.now()); if (!DET) raf = requestAnimationFrame(frame); }
   if (document.fonts?.ready) document.fonts.ready.then(() => reduce && invalidate());
 }
 initScene().catch(err => { console.info('3D scene unavailable, using HTML fallback:', err && err.message); root.classList.remove('has3d'); root.classList.add('no3d'); });

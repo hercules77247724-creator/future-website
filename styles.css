@@ -51,6 +51,7 @@ a{color:inherit;text-decoration:none}
     radial-gradient(ellipse 55% 40% at 28% 30%,rgba(var(--gold-rgb),.13),transparent 70%),
     radial-gradient(ellipse 50% 45% at 75% 68%,rgba(var(--gold-rgb),.1),transparent 70%),
     var(--bg)}
+#nebula{position:fixed;inset:0;z-index:-2;pointer-events:none;background:center/cover no-repeat;mix-blend-mode:screen;opacity:.9}
 #scene{position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;display:block;mix-blend-mode:screen}
 .vignette{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 85% 80% at 50% 50%,transparent 45%,rgba(10,9,7,.78) 100%)}
 
