@@ -8,7 +8,7 @@
   if (!gl) return; // CSS gradient fallback stays visible
   const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
   const fs = `precision mediump float;
-uniform vec2 R;uniform float T;uniform float S;
+uniform vec2 R;uniform float T;uniform float S;uniform vec3 CL;uniform vec3 CD;
 float h(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
   return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
@@ -26,7 +26,7 @@ void main(){
   float a=band*(.35+.65*b1);
   float c=smoothstep(.45,.95,fbm(p*.9-q*1.5+vec2(t*.005,3.))) * (.25+.75*b2);
   float I=.27*a+.18*c;                      // peak ~0.45 (was .36)
-  vec3 gold=vec3(.831,.651,.290), deep=vec3(.56,.40,.16);
+  vec3 gold=CL, deep=CD;
   vec3 col=vec3(.039,.035,.027)+I*mix(deep,gold,a);
   // vignette/scrim
   float v=smoothstep(1.25,.25,length((uv-.5)*vec2(1.1,1.)));
@@ -34,6 +34,9 @@ void main(){
   col+=(h(gl_FragCoord.xy+fract(t))-.5)/255.; // dither
   gl_FragColor=vec4(col,1.);
 }`;
+  // palette: colors come from CSS custom properties (--aurora-light / --aurora-deep) so a palette swap is one CSS change
+  const hex = (name, dflt) => { const v = (getComputedStyle(document.documentElement).getPropertyValue(name) || dflt).trim().replace('#','');
+    const n = parseInt(v.length === 3 ? v.replace(/./g, '$&$&') : v, 16); return isNaN(n) ? hex(name, dflt === '#000' ? '#B08A1E' : dflt) : [(n>>16&255)/255, (n>>8&255)/255, (n&255)/255]; };
   const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); return o; };
   const pr = gl.createProgram();
   gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
@@ -43,6 +46,8 @@ void main(){
   const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform3fv(gl.getUniformLocation(pr, 'CL'), hex('--aurora-light', '#B08A1E'));
+  gl.uniform3fv(gl.getUniformLocation(pr, 'CD'), hex('--aurora-deep', '#7A5A12'));
   const uR = gl.getUniformLocation(pr, 'R'), uT = gl.getUniformLocation(pr, 'T'), uS = gl.getUniformLocation(pr, 'S');
   const SCALES = [0.55, 0.4, 0.3];       // render-scale steps (floor 0.3)
   let si = 0, SCALE = SCALES[0];

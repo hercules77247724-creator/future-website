@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no3d">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,219 +8,66 @@
 <meta name="theme-color" content="#0A0907">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=JetBrains+Mono:wght@300;400&family=Manrope:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
+<!-- Three.js r160 pinned, loaded from CDN (no build step). If it fails to load, main.js falls back to the HTML-only page. -->
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" crossorigin>
 </head>
 <body>
 <canvas id="aurora" class="aurora" aria-hidden="true"></canvas>
+<!-- #scene (Three.js canvas) is inserted here by main.js when WebGL and Three.js are available -->
+<div class="vignette" aria-hidden="true"></div>
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="nav">
   <a class="nav__brand" href="#top" aria-label="Future, home">Future</a>
-  <nav aria-label="Primary">
-    <ul class="nav__links">
-      <li><a href="#product">Product</a></li>
-      <li><a href="#work">Work</a></li>
-      <li><a href="#about">About</a></li>
-      <li><a href="#contact">Contact</a></li>
-    </ul>
+  <nav class="nav__right" aria-label="Primary">
+    <a class="nav__link" href="#product">Product</a>
+    <a class="btn" href="#product" id="request-access">Request access</a>
   </nav>
-  <a class="btn" href="#contact">Request access</a>
 </header>
 
 <main id="main">
 <section class="hero" id="top" aria-labelledby="hero-title">
-  <div class="hero__glow" aria-hidden="true"></div>
-  <canvas id="particles" class="hero__canvas" aria-hidden="true"></canvas>
-
-  <div class="stage" aria-hidden="true">
-    <div class="ring ring--outer"></div>
-    <div class="ring ring--main"></div>
-    <div class="ring ring--inner"></div>
-    <div class="core"></div>
-    <div id="orbits"></div>
-  </div>
-
   <div class="hero__content">
     <p class="readout hero__kicker fade" style="--d:.2s">AI innovation &amp; creation</p>
     <h1 id="hero-title" class="wordmark fade" style="--d:.5s">Future</h1>
     <p class="tagline fade" style="--d:1.4s">One voice. A team behind it.</p>
   </div>
-
-  <p class="readout status" aria-label="System status: online"><span class="status__dot" aria-hidden="true"></span>SYSTEM · ONLINE</p>
-  <p class="readout agents-note" aria-hidden="true">07 AGENTS · 01 CORE</p>
-  <p class="sr-only">Decorative constellation of seven agents orbiting a central core: Atlas, Scribe, Relay, Vector, Echo, Forge and Sage.</p>
+  <p class="readout hero__status" aria-label="System status: online"><span class="status__dot" aria-hidden="true"></span>SYSTEM · ONLINE</p>
+  <p class="readout hero__scroll" aria-hidden="true">SCROLL</p>
+  <p class="readout hero__count" aria-hidden="true">07 AGENTS · 01 CORE</p>
 </section>
 
-<section class="section marketing" id="marketing" aria-labelledby="marketing-h">
-  <div class="section__inner">
-    <p class="readout section__label reveal">01 · WHAT WE BUILD</p>
-    <div class="marketing__head">
-      <h2 id="marketing-h" class="section__title marketing__title">Intelligence that creates,<br>with one voice.</h2>
-      <svg class="draw" viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-        <path class="draw__line draw__line--a" pathLength="1" d="M0 28 V0 H56"/>
-        <path class="draw__line draw__line--a" pathLength="1" d="M1000 172 V200 H944"/>
-        <path class="draw__line draw__line--b" pathLength="1" d="M0 200 H1000"/>
-        <path class="draw__line draw__line--c" pathLength="1" d="M0 200 C300 184 700 184 1000 200" />
-      </svg>
-    </div>
-    <div class="marketing__copy">
-      <p class="marketing__lead reveal" style="--i:1">Future is an AI innovation and creation company. We build intelligent systems that help people make things, and we make them quietly, with care.</p>
-      <p class="muted reveal" style="--i:2">Our first product is an AI agent team. You speak to one voice; a team of specialised agents works behind it, handing tasks to one another until the work is done.</p>
-    </div>
-    <ul class="pillars">
-      <li class="glass-panel pillar reveal" style="--i:3"><p class="readout">01 · ONE VOICE</p><h3 class="pillar__title">One place to ask.</h3><p class="muted">A single conversation is the whole interface. No dashboards of agents to manage.</p></li>
-      <li class="glass-panel pillar reveal" style="--i:4"><p class="readout">02 · A TEAM BEHIND IT</p><h3 class="pillar__title">Specialists, in concert.</h3><p class="muted">Agents for planning, writing, data, research and building pass work between them.</p></li>
-      <li class="glass-panel pillar reveal" style="--i:5"><p class="readout">03 · BUILT TO CREATE</p><h3 class="pillar__title">Made to make things.</h3><p class="muted">Aimed at output: drafts, designs, analyses and tools you can use today.</p></li>
-    </ul>
-    <p class="marketing__cta reveal" style="--i:6"><a class="btn" href="#contact">Request access</a></p>
-  </div>
-</section>
+<section class="section team" id="product" aria-labelledby="product-h">
+  <div class="team__inner">
+    <header class="team__head">
+      <p class="readout section__label">THE PRODUCT</p>
+      <h2 id="product-h" class="section__title">Meet the team<br>behind the voice.</h2>
+    </header>
 
-<section class="section work" id="work" aria-labelledby="work-h">
-  <div class="section__inner">
-    <p class="readout section__label reveal">02 · WHAT WE MAKE</p>
-    <h2 id="work-h" class="section__title work__title reveal" style="--i:1">Made with light,<br>shown in the dark.</h2>
-    <p class="muted work__intro reveal" style="--i:2">A gallery of the art, film and design Future creates. <span class="readout">Note:</span> every item below is a placeholder until real work is added.</p>
-    <div class="filters reveal" style="--i:3" role="group" aria-label="Filter gallery by category">
-      <button type="button" class="filter" data-filter="ALL" aria-pressed="true">All</button>
-      <button type="button" class="filter" data-filter="ART" aria-pressed="false">Art</button>
-      <button type="button" class="filter" data-filter="VIDEO" aria-pressed="false">Video</button>
-      <button type="button" class="filter" data-filter="DESIGN" aria-pressed="false">Design</button>
+    <div class="team__stage" id="stage">
+      <ul class="agents" id="agents" aria-label="Agent team status"></ul>
     </div>
-    <p class="readout work__count" id="work-count" role="status" aria-live="polite">09 ITEMS</p>
-    <ul class="gallery">
-      <li class="work__item reveal" data-cat="ART" style="--i:0">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:4/5;--g:radial-gradient(ellipse at 30% 25%,rgba(212,166,74,.28),transparent 55%),linear-gradient(160deg,#241a10,#0d0b08)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">ART</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Ember Cartography</span>
-          <span class="card__desc">A generated map of imagined coastlines, drawn in warm light.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="VIDEO" style="--i:1">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:16/9;--g:radial-gradient(ellipse at 70% 80%,rgba(240,203,122,.22),transparent 60%),linear-gradient(20deg,#0c0a08,#2a1e12)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">VIDEO</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Slow Dawn, Rendered</span>
-          <span class="card__desc">A cinematic establishing shot that lets the light arrive on its own.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="DESIGN" style="--i:2">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:1/1;--g:radial-gradient(circle at 50% 40%,rgba(212,166,74,.2),transparent 50%),linear-gradient(135deg,#1c1710,#0b0a08)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">DESIGN</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Instrument Type System</span>
-          <span class="card__desc">A typographic system for dense, quiet interfaces.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="ART" style="--i:0">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:3/4;--g:radial-gradient(ellipse at 75% 30%,rgba(240,203,122,.26),transparent 50%),linear-gradient(200deg,#2b2014,#0a0907)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">ART</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Portrait in Low Light</span>
-          <span class="card__desc">A study of a face half-lit by a single warm source.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="VIDEO" style="--i:1">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:4/3;--g:radial-gradient(circle at 25% 60%,rgba(212,166,74,.24),transparent 55%),linear-gradient(90deg,#0b0a08,#221911)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">VIDEO</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Orbit, Take Two</span>
-          <span class="card__desc">A looping sequence of nodes passing through dark space.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="DESIGN" style="--i:2">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:16/10;--g:radial-gradient(ellipse at 50% 100%,rgba(212,166,74,.25),transparent 60%),linear-gradient(180deg,#14110c,#0a0907)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">DESIGN</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Quiet Dashboard</span>
-          <span class="card__desc">A control surface where only what matters is lit.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="ART" style="--i:0">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:1/1;--g:radial-gradient(circle at 20% 20%,rgba(240,203,122,.2),transparent 40%),radial-gradient(circle at 80% 75%,rgba(212,166,74,.18),transparent 45%),#100d09" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">ART</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Field of Small Lights</span>
-          <span class="card__desc">Thousands of faint points settling into a pattern.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="VIDEO" style="--i:1">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:3/2;--g:radial-gradient(ellipse at 40% 50%,rgba(212,166,74,.22),transparent 55%),linear-gradient(120deg,#26190e,#0a0907)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">VIDEO</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Handoff, Explained</span>
-          <span class="card__desc">A short film on how a team of agents passes work along.</span>
-        </button>
-      </li>
-      <li class="work__item reveal" data-cat="DESIGN" style="--i:2">
-        <button type="button" class="glass-panel card">
-          <span class="card__img" style="--ar:5/4;--g:radial-gradient(ellipse at 60% 35%,rgba(240,203,122,.2),transparent 55%),linear-gradient(150deg,#1d160d,#0b0a08)" aria-hidden="true"></span>
-          <span class="card__meta"><span class="readout">DESIGN</span><span class="readout card__tag">PLACEHOLDER</span></span>
-          <span class="card__title">Wordmark Studies</span>
-          <span class="card__desc">Early marks for Future, drawn in hairlines of light.</span>
-        </button>
-      </li>
-    </ul>
-  </div>
-</section>
 
-<section class="section product" id="product" aria-labelledby="product-h">
-  <div class="section__inner">
-    <p class="readout section__label reveal">03 · THE PRODUCT</p>
-    <h2 id="product-h" class="section__title product__title reveal" style="--i:1">Meet the team<br>behind the voice.</h2>
-    <p class="muted product__intro reveal" style="--i:2">Ask once. Seven specialised agents pick it up, pass it along and hand back one answer. This is a simulation: no model is called.</p>
-
-    <div class="glass-panel demo reveal" style="--i:3" id="demo" data-state="idle">
+    <div class="glass-panel demo" id="demo" data-state="idle">
       <p class="readout demo__bar" aria-hidden="true"><span>CORE · <b id="demo-core-state">IDLE</b></span><span class="demo__bar-r">07 AGENTS · SIMULATED</span></p>
-      <div class="demo__stage" id="demo-stage">
-        <svg class="demo__svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-          <circle class="demo__orbit" cx="50" cy="50" r="30"/>
-          <circle class="demo__orbit" cx="50" cy="50" r="38"/>
-          <g id="demo-lines"></g>
-          <g id="demo-pulses"></g>
-        </svg>
-        <div class="demo__core" id="demo-core" aria-hidden="true"></div>
-        <ul class="demo__agents" id="demo-agents" aria-label="Agent team status"></ul>
-      </div>
       <form class="demo__form" id="demo-form" novalidate>
-        <label class="readout demo__label" for="demo-input">Your request</label>
+        <label class="sr-only" for="demo-input">Your request</label>
         <div class="demo__row">
           <input class="demo__input" id="demo-input" name="request" type="text" maxlength="120" autocomplete="off" placeholder="Ask the team to make something…" aria-describedby="demo-out">
           <button class="btn demo__btn" id="demo-btn" type="submit">Send</button>
         </div>
       </form>
-      <p class="demo__out" id="demo-out" role="status" aria-live="polite"><span class="readout">READY</span> The team is idle. Send a request to watch it route.</p>
+      <p class="demo__out" id="demo-out" role="status" aria-live="polite"><span class="readout">DEMO</span> Simulation only, no model is called. Send a request to watch the team route it.</p>
     </div>
-  </div>
-</section>
-
-<section class="section" id="about" aria-labelledby="about-h">
-  <div class="section__inner">
-    <p class="readout section__label">04 · ABOUT</p>
-    <h2 id="about-h" class="section__title">Built to think quietly.</h2>
-    <div class="glass-panel"><p class="readout">STATUS · COMING NEXT</p><p class="muted">About placeholder: mission, principles and team.</p></div>
-  </div>
-</section>
-
-<section class="section" id="contact" aria-labelledby="contact-h">
-  <div class="section__inner">
-    <p class="readout section__label">05 · CONTACT</p>
-    <h2 id="contact-h" class="section__title">Request access.</h2>
-    <div class="glass-panel"><p class="readout">STATUS · COMING NEXT</p><p class="muted">Contact placeholder: access request form.</p></div>
   </div>
 </section>
 </main>
 
-<footer class="footer">
-  <div class="section__inner footer__row">
-    <span class="wordmark-sm">Future</span>
-    <span class="readout">© 2026 FUTURE · ALL SYSTEMS NOMINAL</span>
-  </div>
-</footer>
-
 <script src="aurora.js" defer></script>
-<script src="main.js"></script>
+<script type="module" src="main.js"></script>
 </body>
 </html>
